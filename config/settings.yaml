@@ -1,0 +1,43 @@
+# THE OCTAGON — runtime configuration
+# Directives layer of the D.O.E. architecture: everything tunable lives here,
+# never hard-coded in the model/orchestrator code.
+
+app:
+  name: "THE OCTAGON"
+  env: "${APP_ENV:development}"
+
+paths:
+  duckdb: "data/processed/octagon.duckdb"
+  raw_data: "data/raw"
+  reports: "data/reports"
+
+ingestion:
+  base_url: "http://ufcstats.com"
+  user_agent: "TheOctagon/2.0 (JBAnalytics LLC)"
+  request_delay_seconds: 1.2
+  retries: 3
+
+council:
+  # Starting weights for the blended vote. Overridden by the meta-learner
+  # once enough validated predictions exist to train a stacker.
+  weights:
+    gbm: 1.0
+    markov: 0.0
+    bayesian: 0.0
+    lstm: 0.0
+    sharp_money: 0.0
+  # A prophet with status "stub" is excluded from the live blend until
+  # promoted — see README roadmap for what's implemented vs. planned.
+  status:
+    gbm: active
+    markov: active
+    bayesian: experimental
+    lstm: stub
+    sharp_money: stub
+
+calibration:
+  method: isotonic       # isotonic | platt | temperature
+  target_brier: 0.18
+
+validation:
+  min_predictions_before_stacking: 50
