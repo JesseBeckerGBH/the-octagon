@@ -34,6 +34,45 @@ CREATE TABLE IF NOT EXISTS fights (
     time          TEXT
 );
 
+-- Rich per-fight stats from the HuggingFace/Kaggle ingestion pipeline
+-- (ingestion/hf_pipeline.py) — strikes, takedowns, control time, etc. per
+-- fighter per fight. This is what features/leak_safe_features.py builds
+-- the production-grade feature set from; the scraper-based `fights` table
+-- above stays as the lighter-weight, always-available fallback.
+CREATE TABLE IF NOT EXISTS fight_stats_raw (
+    fight_id                   TEXT PRIMARY KEY,
+    event_name                 TEXT,
+    event_date                 DATE,
+    weight_class               TEXT,
+    fighter_a_name              TEXT,
+    fighter_b_name              TEXT,
+    winner_is_a                 BOOLEAN,
+    finish_method               TEXT,
+    finish_round                INTEGER,
+    fighter_a_kd                 REAL,
+    fighter_a_sig_str_landed      REAL,
+    fighter_a_sig_str_attempted   REAL,
+    fighter_a_sig_str_pct         REAL,
+    fighter_a_td_landed           REAL,
+    fighter_a_td_attempted        REAL,
+    fighter_a_td_pct              REAL,
+    fighter_a_sub_att             REAL,
+    fighter_a_rev                 REAL,
+    fighter_a_ctrl_time_seconds   REAL,
+    fighter_b_kd                 REAL,
+    fighter_b_sig_str_landed      REAL,
+    fighter_b_sig_str_attempted   REAL,
+    fighter_b_sig_str_pct         REAL,
+    fighter_b_td_landed           REAL,
+    fighter_b_td_attempted        REAL,
+    fighter_b_td_pct              REAL,
+    fighter_b_sub_att             REAL,
+    fighter_b_rev                 REAL,
+    fighter_b_ctrl_time_seconds   REAL,
+    source                      TEXT,
+    ingested_at                 TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS odds_history (
     odds_id       TEXT PRIMARY KEY,
     fight_id      TEXT REFERENCES fights(fight_id),
