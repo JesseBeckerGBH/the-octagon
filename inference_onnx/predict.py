@@ -18,11 +18,13 @@ from pydantic import BaseModel
 from features.engineer import build_feature_table
 from models.gbm_prophet import GBMProphet
 from models.markov_prophet import MarkovProphet
-from orchestrator.council import Council
+from orchestrator.council import Council, load_config
+from orchestrator.kelly_staking import KellyStaking
 
 DB_PATH = "data/processed/octagon.duckdb"
 
 council: Council | None = None
+staking: KellyStaking | None = None
 
 
 def _train_council() -> Council:
@@ -42,8 +44,10 @@ def _train_council() -> Council:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global council
+    global council, staking
     council = _train_council()
+    cfg = load_config()
+    staking = KellyStaking(**cfg["staking"])
     yield
 
 
@@ -53,6 +57,9 @@ app = FastAPI(title="THE OCTAGON — Inference API", lifespan=lifespan)
 class PredictRequest(BaseModel):
     fighter_a: str
     fighter_b: str
+    # Optional: decimal odds on fighter_a, if you want a suggested paper
+    # stake back. Omit it for a pure probability call.
+    decimal_odds_a: float | None = None
 
 
 @app.get("/health")
@@ -72,10 +79,17 @@ def predict(req: PredictRequest):
     placeholder = pl.DataFrame({"reach_diff": [0.0], "age_diff": [0.0], "slpm_diff": [0.0]})
     result = council.consensus(placeholder)[0]
 
-    return {
+    response = {
         "fighter_a": req.fighter_a,
         "fighter_b": req.fighter_b,
         "win_prob_a": result.blended_prob_a,
         "prophet_probs": result.prophet_probs,
         "dissent": result.dissent,
     }
+
+    if req.decimal_odds_a is not None and staking is not None:
+        stake, reason = staking.calculate_stake(result.blended_prob_a, req.decimal_odds_a)
+        response["suggested_stake"] = stake
+        response["stake_reason"] = reason
+
+    return response
