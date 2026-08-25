@@ -13,18 +13,19 @@ event rather than refitting from scratch.
 import numpy as np
 import polars as pl
 
+from features.engineer import get_feature_cols
 from models.base import Prophet
-
-FEATURE_COLUMNS = ["reach_diff", "age_diff", "slpm_diff"]
 
 
 class BayesianProphet(Prophet):
     name = "bayesian"
 
-    def __init__(self, draws: int = 200, tune: int = 200, chains: int = 1):
+    def __init__(self, draws: int = 200, tune: int = 200, chains: int = 1,
+                 feature_cols: list[str] | None = None):
         self.draws = draws
         self.tune = tune
         self.chains = chains
+        self.feature_cols = feature_cols
         self._trace = None
         self._mean_coefs = None
         self._mean_intercept = None
@@ -32,7 +33,9 @@ class BayesianProphet(Prophet):
     def fit(self, features: pl.DataFrame, labels: pl.Series) -> "BayesianProphet":
         import pymc as pm
 
-        X = features.select(FEATURE_COLUMNS).to_numpy()
+        cols = self.feature_cols or get_feature_cols(features)
+        self.feature_cols = cols
+        X = features.select(cols).fill_null(0).to_numpy()
         y = labels.to_numpy()
 
         with pm.Model():
@@ -57,7 +60,7 @@ class BayesianProphet(Prophet):
     def predict_proba(self, features: pl.DataFrame) -> list[float]:
         if self._mean_coefs is None:
             raise RuntimeError("BayesianProphet.fit() must be called before predict_proba().")
-        X = features.select(FEATURE_COLUMNS).to_numpy()
+        X = features.select(self.feature_cols).fill_null(0).to_numpy()
         logits = self._mean_intercept + X @ self._mean_coefs
         probs = 1 / (1 + np.exp(-logits))
         return probs.tolist()
