@@ -37,6 +37,7 @@ octagon/
 ├── features/engineer.py       # Polars differential + rolling-form features
 ├── models/                    # one file per prophet — see status table below
 ├── orchestrator/council.py    # weighted blend + optional LightGBM stacker
+├── orchestrator/kelly_staking.py  # fractional Kelly bet sizing (ported from The Beast)
 ├── validator/                 # Brier score, log loss, CLV, writes validation_log
 ├── inference_onnx/            # FastAPI service (ONNX export is a planned optimization)
 ├── backtesting/                # walk-forward backtest (not built yet)
@@ -80,6 +81,56 @@ validated history (`config.validation.min_predictions_before_stacking`).
 This typically adds several points of accuracy over averaging alone, while
 preserving calibration — but it needs real validated predictions to train
 on, so it isn't switched on by default.
+
+## What was ported from The Beast (tennis Council of Prophets)
+
+Jesse uploaded `council_of_prophets.zip` believing it might be the UFC
+"Prophet" engine. It isn't — there's no UFC-specific code in it (no
+strikes, takedowns, or fight outcomes anywhere). It's **The Beast's**
+tennis prediction stack: a `BayesianProphet` fit on ATP serve/return
+stats, a `NeuralProphet` (LSTM, trained on placeholder random data — same
+maturity as Octagon's own LSTM stub), a `MarkovSimulator` that computes
+tennis game/set/tiebreak probabilities analytically, an `OracleEnsemble`
+meta-learner, a `TennisDataLoader` pulling Jeff Sackmann's public ATP/WTA
+CSVs, plus tooling for other sports (DataGolf client, a darts computer-
+vision scoreboard reader) and personal-assistant tooling (an arXiv paper
+scout, a podcast transcriber/sentiment scorer, a local-LLM "Chairman"
+report writer) that rode along in the same folder.
+
+What actually moved over, because the math is sport-agnostic:
+
+- **`orchestrator/kelly_staking.py`** — the fractional-Kelly bet sizer.
+  Octagon didn't have one at all; this is a straight, valuable port, now
+  wired into `/predict`'s optional `decimal_odds_a` field.
+
+What's a good idea but not ported yet (needs UFC-shaped data first):
+
+- **Bayesian shrinkage.** The tennis `BayesianProphet` uses a
+  hierarchical Beta-Binomial model that shrinks a low-sample-size
+  player's stats toward the population mean — statistically sharper than
+  Octagon's current flat-prior logistic regression, and arguably *more*
+  valuable for UFC than tennis, since plenty of fighters have only 1-2
+  UFC fights. Worth rebuilding `models/bayesian_prophet.py` around this
+  once striking/grappling accuracy fields exist (roadmap item 1).
+- **The "Chairman" LLM report** (`ollama_agent.py`) — turns the council's
+  numbers into a plain-English betting writeup. No UFC equivalent exists;
+  this would be a genuinely new subscriber-facing feature, not just a
+  port.
+- **Podcast sentiment intel** (`podcast_feed_handler.py` +
+  `podcast_listener.py`) — transcribes podcast RSS episodes with Whisper
+  and scores sentiment into a "Hype Score." For UFC this could ingest
+  fight-week podcasts for injury/camp chatter — a real qualitative signal
+  the sharp-money/odds side doesn't capture. Also net-new, not a port.
+
+What's not reusable: the Markov tennis math (games/sets/tiebreaks don't
+map onto UFC rounds/method-of-victory), `TennisDataLoader` (tennis-
+specific source), and the darts/golf/tech-scout tooling (different
+projects that happened to share the folder).
+
+One more thing: the zip also contained a `Saved Pictures` folder of
+unrelated personal photos, which came along because the whole parent
+folder got zipped rather than just the project. Nothing from it went into
+this repo — flagging it so it doesn't end up committed anywhere by accident.
 
 ## Where this actually runs
 
