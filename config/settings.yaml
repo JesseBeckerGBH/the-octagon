@@ -18,10 +18,17 @@ ingestion:
   retries: 3
 
 council:
-  # Starting weights for the blended vote. Overridden by the meta-learner
-  # once enough validated predictions exist to train a stacker.
+  # Starting weights for the plain weighted-average blend (mode 3).
+  # Superseded by orchestrator/council.py's fit_calibrated_stacker() (mode
+  # 1, the production-proven recipe) once
+  # validation.min_predictions_before_stacking is met — these weights are
+  # what a fresh install runs on before there's enough history to
+  # calibrate.
   weights:
-    gbm: 1.0
+    gbm: 0.3
+    lightgbm: 0.3
+    logistic: 0.2
+    randomforest: 0.2
     markov: 0.0
     bayesian: 0.0
     lstm: 0.0
@@ -30,6 +37,9 @@ council:
   # promoted — see README roadmap for what's implemented vs. planned.
   status:
     gbm: active
+    lightgbm: active
+    logistic: active
+    randomforest: active
     markov: active
     bayesian: experimental
     lstm: stub
@@ -38,6 +48,14 @@ council:
 calibration:
   method: isotonic       # isotonic | platt | temperature
   target_brier: 0.18
+  # Presentation gate (orchestrator/gating.py) — ported from the 90-day
+  # playbook in the analysis of the live thebeastufc.com model. Bands are
+  # [low, high) on confidence = max(prob_a, 1 - prob_a). Empty by default:
+  # nothing is gated until you've run backtesting/engine.py against your
+  # own data and confirmed these bands (or others) are actually bad here
+  # too — don't copy production's exact negative-ROI bands blind.
+  suppressed_confidence_bands: []
+  flagged_weight_classes: []
 
 validation:
   min_predictions_before_stacking: 50
