@@ -41,3 +41,12 @@ calibration:
 
 validation:
   min_predictions_before_stacking: 50
+
+staking:
+  # Ported from the tennis Council of Prophets project — fractional Kelly
+  # with a hard cap. bankroll here is a paper-trading unit, not real money,
+  # until the product actually stakes real bets.
+  bankroll: 1000.0
+  kelly_fraction: 0.25
+  max_stake_pct: 0.05
+  min_edge: 0.02
