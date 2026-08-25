@@ -1,0 +1,38 @@
+# THE OCTAGON — core dependencies
+# Torch is intentionally NOT listed here — install it separately with the
+# CPU wheel index so it doesn't fight the resolver:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Data ingestion
+requests
+beautifulsoup4
+lxml
+tqdm
+python-dotenv
+pyyaml
+
+# Data engineering
+pandas
+polars
+duckdb
+pyarrow
+
+# Modeling
+scikit-learn
+numpy
+xgboost
+lightgbm
+pymc
+
+# Inference service
+fastapi
+uvicorn[standard]
+onnxruntime
+
+# Scheduling / ops
+schedule
+apscheduler
+psutil
+
+# Testing
+pytest

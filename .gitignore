@@ -1,0 +1,34 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Data (never commit real scraped/production data)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+*.duckdb
+*.duckdb.wal
+
+# Model artifacts (large binaries, track via releases/artifact storage instead)
+models/artifacts/
+*.onnx
+*.pt
+*.pth
+
+# Rust
+rust_core/target/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
