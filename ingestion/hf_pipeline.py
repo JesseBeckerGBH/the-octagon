@@ -168,6 +168,25 @@ def _merge_kaggle(df_hf: pd.DataFrame, large_path: Path, medium_path: Path) -> p
         return df_hf
 
 
+def _clean(v):
+    """NaN/NaT -> None (DuckDB will reject a bare float('nan') going into a
+    typed column like finish_round INTEGER — this is what actually blew up
+    the first real run against the live 5,902-fight HuggingFace dataset,
+    where plenty of fights have a missing round/weight-class/etc.).
+    """
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return v
+
+
+def _clean_stat(v) -> float:
+    cleaned = _clean(v)
+    return 0.0 if cleaned is None else float(cleaned)
+
+
 def load_into_duckdb(df: pd.DataFrame, con: duckdb.DuckDBPyConnection) -> int:
     """Upsert cleaned fights into fight_stats_raw. Returns rows written."""
     stat_cols = [
@@ -182,33 +201,38 @@ def load_into_duckdb(df: pd.DataFrame, con: duckdb.DuckDBPyConnection) -> int:
         if c not in df.columns:
             df[c] = 0.0
 
-    rows = 0
+    ingested_at = datetime.utcnow()
+    records = []
     for _, row in df.iterrows():
         fight_id = f"{row.get('event_name', '')}_{row['header_fighter_a_name']}_{row['header_fighter_b_name']}"
-        con.execute(
-            """
-            INSERT OR REPLACE INTO fight_stats_raw
-            (fight_id, event_name, event_date, weight_class, fighter_a_name, fighter_b_name,
-             winner_is_a, finish_method, finish_round,
-             fighter_a_kd, fighter_a_sig_str_landed, fighter_a_sig_str_attempted, fighter_a_sig_str_pct,
-             fighter_a_td_landed, fighter_a_td_attempted, fighter_a_td_pct, fighter_a_sub_att,
-             fighter_a_rev, fighter_a_ctrl_time_seconds,
-             fighter_b_kd, fighter_b_sig_str_landed, fighter_b_sig_str_attempted, fighter_b_sig_str_pct,
-             fighter_b_td_landed, fighter_b_td_attempted, fighter_b_td_pct, fighter_b_sub_att,
-             fighter_b_rev, fighter_b_ctrl_time_seconds,
-             source, ingested_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                fight_id, row.get("event_name"), row.get("event_date_parsed"), row.get("weight_class"),
-                row["header_fighter_a_name"], row["header_fighter_b_name"], bool(row["winner_is_a"]),
-                row.get("header_finish_details_detailed"), row.get("header_round_detailed"),
-                *[float(row.get(c) or 0.0) for c in stat_cols],
-                "huggingface+kaggle", datetime.utcnow(),
-            ),
-        )
-        rows += 1
-    return rows
+        finish_round = _clean(row.get("header_round_detailed"))
+        records.append((
+            fight_id, _clean(row.get("event_name")), _clean(row.get("event_date_parsed")),
+            _clean(row.get("weight_class")),
+            row["header_fighter_a_name"], row["header_fighter_b_name"], bool(row["winner_is_a"]),
+            _clean(row.get("header_finish_details_detailed")),
+            int(finish_round) if finish_round is not None else None,
+            *[_clean_stat(row.get(c)) for c in stat_cols],
+            "huggingface+kaggle", ingested_at,
+        ))
+
+    con.executemany(
+        """
+        INSERT OR REPLACE INTO fight_stats_raw
+        (fight_id, event_name, event_date, weight_class, fighter_a_name, fighter_b_name,
+         winner_is_a, finish_method, finish_round,
+         fighter_a_kd, fighter_a_sig_str_landed, fighter_a_sig_str_attempted, fighter_a_sig_str_pct,
+         fighter_a_td_landed, fighter_a_td_attempted, fighter_a_td_pct, fighter_a_sub_att,
+         fighter_a_rev, fighter_a_ctrl_time_seconds,
+         fighter_b_kd, fighter_b_sig_str_landed, fighter_b_sig_str_attempted, fighter_b_sig_str_pct,
+         fighter_b_td_landed, fighter_b_td_attempted, fighter_b_td_pct, fighter_b_sub_att,
+         fighter_b_rev, fighter_b_ctrl_time_seconds,
+         source, ingested_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        records,
+    )
+    return len(records)
 
 
 def main() -> None:

@@ -122,10 +122,25 @@ def compute_metrics(y_true, y_prob, label: str = "") -> dict:
 
 
 def run_walk_forward(df: pd.DataFrame, prophet_keys: list[str], start_year: int = 2018,
-                      min_train: int = 500, step_size: int = 50):
-    """Expanding-window walk-forward backtest. At each step: train on all
-    fights strictly before the window, predict the next `step_size`
-    fights, isotonic-calibrate + logistic-stack, record, slide forward.
+                      min_train: int = 500, step_size: int = 50,
+                      stack_holdout_frac: float = 0.2, min_holdout: int = 50, max_holdout: int = 400):
+    """Expanding-window walk-forward backtest. At each step: reserve the
+    most recent slice of the training window as a true out-of-sample
+    holdout, fit each prophet on the rest and isotonic-calibrate + fit the
+    logistic stacker against that holdout, then refit every prophet on
+    the FULL training window (the version that actually scores the test
+    slice), record, slide forward.
+
+    The holdout split matters: an earlier version of this loop fit the
+    stacking meta-learner on prophets' in-sample predictions on their own
+    training data. That let the meta-learner over-trust whichever base
+    model overfits training data hardest (GBM/RandomForest routinely
+    look near-perfect in-sample), and it showed up as a genuine bug only
+    once this ran against the real 4,429-fight dataset: the "ensemble"
+    scored *worse* (Brier 0.369) than its own best base prophet
+    (logistic, Brier 0.242) — synthetic smoke-test fixtures were too
+    small/clean to expose it. Fitting the stacker on true holdout
+    predictions instead is what makes the meta-learner's weights honest.
     """
     log(f"Walk-forward backtest: start_year={start_year}, step={step_size}, min_train={min_train}")
 
@@ -155,19 +170,35 @@ def run_walk_forward(df: pd.DataFrame, prophet_keys: list[str], start_year: int 
         if len(X_test_pl) == 0:
             break
 
-        base_train, base_test, names = [], [], []
+        holdout_n = int(np.clip(idx * stack_holdout_frac, min_holdout, max_holdout))
+        holdout_n = max(1, min(holdout_n, idx - 1))
+        inner_end = idx - holdout_n
+
+        X_inner_pl = pl.from_pandas(X.iloc[:inner_end].reset_index(drop=True))
+        y_inner = y[:inner_end]
+        X_holdout_pl = pl.from_pandas(X.iloc[inner_end:idx].reset_index(drop=True))
+        y_holdout = y[inner_end:idx]
+
+        base_holdout, base_test, names = [], [], []
         for key in prophet_keys:
-            prophet = PROPHET_REGISTRY[key](feature_cols=feature_cols)
-            prophet.fit(X_train_pl, pl.Series(y_train))
-            train_probs = np.array(prophet.predict_proba(X_train_pl))
-            test_probs = np.array(prophet.predict_proba(X_test_pl))
+            # Fit on the inner slice only, score the holdout it never saw
+            # -- these holdout scores are what the stacker learns from.
+            inner_prophet = PROPHET_REGISTRY[key](feature_cols=feature_cols)
+            inner_prophet.fit(X_inner_pl, pl.Series(y_inner))
+            holdout_probs = np.array(inner_prophet.predict_proba(X_holdout_pl))
 
-            base_train.append(isotonic_calibrate(train_probs, y_train, train_probs))
-            base_test.append(isotonic_calibrate(train_probs, y_train, test_probs))
-            names.append(prophet.name)
+            # Refit on the FULL training window -- this is the model that
+            # actually serves the real test slice.
+            serving_prophet = PROPHET_REGISTRY[key](feature_cols=feature_cols)
+            serving_prophet.fit(X_train_pl, pl.Series(y_train))
+            test_probs = np.array(serving_prophet.predict_proba(X_test_pl))
 
-        if len(base_train) > 1:
-            ensemble_prob, _ = stack_predictions(base_train, y_train, base_test)
+            base_holdout.append(isotonic_calibrate(holdout_probs, y_holdout, holdout_probs))
+            base_test.append(isotonic_calibrate(holdout_probs, y_holdout, test_probs))
+            names.append(serving_prophet.name)
+
+        if len(base_holdout) > 1:
+            ensemble_prob, _ = stack_predictions(base_holdout, y_holdout, base_test)
         else:
             ensemble_prob = base_test[0]
 
