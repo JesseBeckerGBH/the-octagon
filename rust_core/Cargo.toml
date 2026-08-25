@@ -1,0 +1,13 @@
+[package]
+name = "octagon-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "octagon_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+# ort = "2"     # ONNX Runtime bindings — add once there's a model to serve
+# pyo3 = "0.22" # Python bridge — add once inference_onnx/predict.py calls into this
