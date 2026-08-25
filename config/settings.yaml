@@ -50,12 +50,24 @@ calibration:
   target_brier: 0.18
   # Presentation gate (orchestrator/gating.py) — ported from the 90-day
   # playbook in the analysis of the live thebeastufc.com model. Bands are
-  # [low, high) on confidence = max(prob_a, 1 - prob_a). Empty by default:
-  # nothing is gated until you've run backtesting/engine.py against your
-  # own data and confirmed these bands (or others) are actually bad here
-  # too — don't copy production's exact negative-ROI bands blind.
-  suppressed_confidence_bands: []
-  flagged_weight_classes: []
+  # [low, high) on confidence = max(prob_a, 1 - prob_a). Shipped empty
+  # originally: nothing gated until backtesting/engine.py had been run
+  # against real data and confirmed a band (or weight class) is actually
+  # bad here too — production's own numbers were never copied in blind.
+  #
+  # Below are that confirmation, from the first full walk-forward run
+  # against the real 4,429-fight leak-safe dataset (2,976 OOS predictions,
+  # 2018-2025, backtesting/results/backtest_report.txt):
+  #   - 50-55% confidence: n=994, accuracy 51.2%, ROI -2.2%. Large sample,
+  #     clearly a coin flip the model shouldn't be presenting as a pick.
+  #   - Catch Weight: n=38, accuracy 36.8%, ROI -29.7%. Small sample, but
+  #     catchweight bouts are structurally odd matchups with thin history
+  #     — exactly the "flag until proven out" case this gate exists for.
+  #   Women's Bantamweight ran slightly negative too (n=111, ROI -2.0%)
+  #   but close enough to breakeven at that sample size that it's a watch
+  #   item, not gated yet — re-check after more fights accumulate.
+  suppressed_confidence_bands: [[0.50, 0.55]]
+  flagged_weight_classes: ["Catch Weight"]
 
 validation:
   min_predictions_before_stacking: 50
