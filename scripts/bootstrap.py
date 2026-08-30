@@ -13,10 +13,35 @@ every deploy.
 import os
 import subprocess
 import sys
+import time
 
 import duckdb
 
 DB_PATH = "data/processed/octagon.duckdb"
+
+
+def wait_for_volume(tries: int = 10, delay: float = 1.0) -> None:
+    """Block until the mounted volume is actually stable.
+
+    Railway's bind-mount for a persistent volume can finish attaching a
+    beat AFTER this process has already started -- if we write anything to
+    the mount path before that happens, the real mount lands on top of it
+    and silently hides it. Detect that by writing a marker, sleeping, and
+    checking it's still there; if the mount swapped underneath us, the
+    marker vanishes and we retry on the (now real) filesystem.
+    """
+    marker_dir = "data"
+    marker = os.path.join(marker_dir, ".bootstrap_marker")
+    for attempt in range(1, tries + 1):
+        os.makedirs(marker_dir, exist_ok=True)
+        with open(marker, "w") as f:
+            f.write(str(time.time()))
+        time.sleep(delay)
+        if os.path.exists(marker):
+            print(f"[bootstrap] volume stable after {attempt} check(s).", flush=True)
+            return
+        print(f"[bootstrap] volume not stable yet (attempt {attempt}/{tries}) -- retrying...", flush=True)
+    print("[bootstrap] WARNING: volume never stabilized -- proceeding anyway.", flush=True)
 
 
 def needs_ingestion() -> bool:
@@ -33,6 +58,8 @@ def needs_ingestion() -> bool:
 
 
 def main() -> None:
+    wait_for_volume()
+
     if needs_ingestion():
         print("[bootstrap] fight_stats_raw empty -- running ingestion pipeline...", flush=True)
         subprocess.run([sys.executable, "-m", "ingestion.hf_pipeline"], check=True)

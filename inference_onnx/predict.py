@@ -49,6 +49,8 @@ using_real_data: bool = False
 def _train_council(cfg: dict) -> Council:
     global fighter_lookup, medians, feature_cols, using_real_data
 
+    import os
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     con = duckdb.connect(DB_PATH)
     try:
         table = build_feature_table(con)
