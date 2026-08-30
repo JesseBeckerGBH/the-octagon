@@ -24,6 +24,7 @@ from contextlib import asynccontextmanager
 import duckdb
 import polars as pl
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from features.engineer import build_feature_table, get_feature_cols
@@ -120,6 +121,63 @@ class PredictRequest(BaseModel):
     # Optional: decimal odds on fighter_a, if you want a suggested paper
     # stake back. Omit it for a pure probability call.
     decimal_odds_a: float | None = None
+
+
+LANDING_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>THE OCTAGON — Inference API</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font: 15px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;
+         background:#0b0d10; color:#e6e8eb; }
+  main { max-width: 720px; margin: 8vh auto; padding: 0 24px; }
+  h1 { font-size: 28px; letter-spacing: .5px; margin: 0 0 4px; }
+  .tag { color:#8b95a1; font-size: 13px; margin-bottom: 32px; }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px;
+          background:#123b23; color:#7ee2a8; font-size:12px; margin-left:8px;
+          vertical-align: middle; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1px;
+       color:#8b95a1; margin: 28px 0 10px; }
+  a { color:#7cb7ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 13px; }
+  pre { background:#131720; border:1px solid #1e2530; border-radius: 8px;
+        padding: 14px 16px; overflow-x:auto; }
+  ul { padding-left: 18px; }
+  li { margin: 6px 0; }
+  footer { margin-top: 40px; color:#5c6673; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>THE OCTAGON <span class="pill">LIVE</span></h1>
+  <div class="tag">UFC fight-prediction ensemble by <strong>JBAnalytics</strong></div>
+
+  <h2>Endpoints</h2>
+  <ul>
+    <li><a href="/docs">/docs</a> — interactive Swagger UI (try predictions in your browser)</li>
+    <li><a href="/health">/health</a> — liveness check</li>
+    <li><code>POST /predict</code> — fight prediction (see docs)</li>
+  </ul>
+
+  <h2>Example</h2>
+<pre>curl -X POST https://thebeastufc-engine-production.up.railway.app/predict \\
+  -H "Content-Type: application/json" \\
+  -d '{"fighter_a":"Islam Makhachev","fighter_b":"Charles Oliveira","decimal_odds_a":1.65}'</pre>
+
+  <footer>5-prophet calibrated ensemble &middot; GBM &middot; LightGBM &middot; Logistic &middot; RandomForest &middot; Markov</footer>
+</main>
+</body>
+</html>
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def root():
+    return LANDING_HTML
 
 
 @app.get("/health")
